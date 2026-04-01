@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -11,7 +11,9 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+  const nextUrl = searchParams.get('next');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +31,7 @@ export function LoginPage() {
       return;
     }
 
-    router.push('/dashboard');
+    router.push(nextUrl || '/dashboard');
   };
 
   const handleOAuth = async (provider: 'github' | 'google') => {
