@@ -1,0 +1,76 @@
+import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { NextRequest } from 'next/server';
+import type { User } from '@/types/database';
+
+export const getAuthenticatedUser = async (): Promise<{ userId: string; user: User } | null> => {
+  const supabase = await createClient();
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+  if (!authUser) return null;
+
+  const { data: user } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', authUser.id)
+    .single();
+
+  if (!user) return null;
+  return { userId: authUser.id, user };
+};
+
+export const getApiKeyUser = async (request: NextRequest): Promise<{ userId: string; user: User } | null> => {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+
+  const apiKey = authHeader.slice(7);
+  const keyHash = await hashApiKey(apiKey);
+
+  const admin = createAdminClient();
+
+  const { data: keyRecord } = await admin
+    .from('api_keys')
+    .select('user_id')
+    .eq('key_hash', keyHash)
+    .single();
+
+  if (!keyRecord) return null;
+
+  // Update last_used_at
+  await admin
+    .from('api_keys')
+    .update({ last_used_at: new Date().toISOString() })
+    .eq('key_hash', keyHash);
+
+  const { data: user } = await admin
+    .from('users')
+    .select('*')
+    .eq('id', keyRecord.user_id)
+    .single();
+
+  if (!user) return null;
+  return { userId: keyRecord.user_id, user };
+};
+
+export const hashApiKey = async (key: string): Promise<string> => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(key);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+export const generateApiKey = (): string => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const key = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  return `sma_${key}`;
+};
+
+export const hashPassword = async (password: string): Promise<string> => {
+  return hashApiKey(password); // SHA-256 hash
+};
+
+export const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
+  const inputHash = await hashPassword(password);
+  return inputHash === hash;
+};
