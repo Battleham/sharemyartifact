@@ -77,5 +77,5 @@ export const POST = async (request: NextRequest) => {
   redirectUrl.searchParams.set('code', code);
   if (state) redirectUrl.searchParams.set('state', state);
 
-  return NextResponse.redirect(redirectUrl.toString());
+  return NextResponse.redirect(redirectUrl.toString(), 303);
 };
