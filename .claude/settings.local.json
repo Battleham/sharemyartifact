@@ -32,7 +32,16 @@
       "Bash(git merge:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(python -m json.tool)"
+      "Bash(python -m json.tool)",
+      "Bash(vercel logs:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:sharemyartifact.com)",
+      "WebSearch",
+      "WebFetch(domain:supabase.com)",
+      "WebFetch(domain:help.xpoz.ai)",
+      "WebFetch(domain:www.tigrisdata.com)",
+      "Bash(npx supabase:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

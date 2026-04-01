@@ -15,6 +15,14 @@ export const middleware = async (request: NextRequest) => {
       return updateSession(request);
     }
 
+    // Short URL: /abc1234 (single segment, 7 lowercase alphanumeric chars)
+    const shortMatch = pathname.match(/^\/([a-z0-9]{7})$/);
+    if (shortMatch) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/api/serve/_short/${shortMatch[1]}`;
+      return NextResponse.rewrite(url);
+    }
+
     // Rewrite /username/slug.html → /api/serve/[username]/[slug]
     const match = pathname.match(/^\/([a-z0-9][a-z0-9_-]+)\/([a-z0-9][a-z0-9_-]*(?:\.html)?)$/);
     if (match) {

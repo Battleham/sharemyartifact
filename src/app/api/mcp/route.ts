@@ -180,6 +180,13 @@ export const DELETE = () => {
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
+const generateShortCode = (): string => {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = new Uint8Array(7);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => chars[b % chars.length]).join('');
+};
+
 const uploadHtml = async (
   admin: ReturnType<typeof createAdminClient>,
   userId: string,
@@ -228,6 +235,8 @@ const uploadHtml = async (
     passwordHash = await hashPassword(args.password as string);
   }
 
+  const shortCode = generateShortCode();
+
   const { data: artifact, error: dbError } = await admin
     .from('artifacts')
     .insert({
@@ -239,6 +248,7 @@ const uploadHtml = async (
       password_hash: passwordHash,
       storage_path: storagePath,
       file_size: fileSize,
+      short_code: shortCode,
     })
     .select()
     .single();
@@ -249,7 +259,8 @@ const uploadHtml = async (
   }
 
   const url = `${ARTIFACT_URL}/${user.username}/${slug}.html`;
-  return { artifact, url, message: `Artifact uploaded successfully! View at: ${url}` };
+  const shortUrl = `${ARTIFACT_URL}/${shortCode}`;
+  return { artifact, url, short_url: shortUrl, message: `Artifact uploaded! View at: ${url} (short: ${shortUrl})` };
 };
 
 const handleToolCall = async (
@@ -407,6 +418,7 @@ const handleToolCall = async (
         : pending.title;
 
       // Create the artifact record
+      const shortCode = generateShortCode();
       const { data: artifact, error: dbError } = await admin
         .from('artifacts')
         .insert({
@@ -418,6 +430,7 @@ const handleToolCall = async (
           password_hash: pending.password_hash,
           storage_path: pending.storage_path,
           file_size: fileSize,
+          short_code: shortCode,
         })
         .select()
         .single();
@@ -430,23 +443,26 @@ const handleToolCall = async (
       await admin.from('pending_uploads').delete().eq('id', uploadId);
 
       const url = `${ARTIFACT_URL}/${user.username}/${pending.slug}.html`;
+      const shortUrl = `${ARTIFACT_URL}/${shortCode}`;
       return {
         artifact,
         url,
-        message: `Artifact uploaded successfully! View at: ${url} (${(fileSize / 1024).toFixed(1)}KB)`,
+        short_url: shortUrl,
+        message: `Artifact uploaded! View at: ${url} (short: ${shortUrl})`,
       };
     }
 
     case 'list_artifacts': {
       const { data: artifacts } = await admin
         .from('artifacts')
-        .select('slug, title, visibility, view_count, created_at, updated_at')
+        .select('slug, title, visibility, view_count, short_code, created_at, updated_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
       return (artifacts || []).map(a => ({
         ...a,
         url: `${ARTIFACT_URL}/${user.username}/${a.slug}.html`,
+        short_url: a.short_code ? `${ARTIFACT_URL}/${a.short_code}` : undefined,
       }));
     }
 
