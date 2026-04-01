@@ -62,7 +62,7 @@ export function OAuthConsentPage({
         )}
 
         <form
-          action="/oauth/authorize"
+          action="/oauth/authorize/callback"
           method="POST"
           onSubmit={() => setSubmitting(true)}
           className="space-y-3"
