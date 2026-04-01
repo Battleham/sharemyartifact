@@ -1,7 +1,7 @@
 export const MCP_TOOLS = [
   {
     name: 'upload_artifact',
-    description: 'Upload an HTML artifact to ShareMyArtifact. Returns a shareable URL. Only the html parameter is required — title, slug, visibility, and password are all optional. For large files (over ~100KB), use upload_artifact_from_url instead to avoid parameter size limits.',
+    description: 'Upload an HTML artifact to ShareMyArtifact. Returns a shareable URL. Only the html parameter is required — title, slug, visibility, and password are all optional. Best for files under ~100KB. For larger files, use request_upload to get a presigned URL and upload directly.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -16,7 +16,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'upload_artifact_from_url',
-    description: 'Upload an HTML artifact by fetching it from a URL. Use this instead of upload_artifact when the HTML content is too large to pass inline (over ~100KB), or when the user provides a URL to their HTML file. The server fetches the HTML from the given URL and stores it. Supports any publicly accessible URL (raw GitHub files, gists, pastebin, hosted files, etc.).',
+    description: 'Upload an HTML artifact by fetching it from a URL. Use when the HTML is already hosted at a public URL. The server fetches the HTML and stores it. Supports any publicly accessible URL (raw GitHub files, gists, pastebin, etc.).',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -27,6 +27,31 @@ export const MCP_TOOLS = [
         password: { type: 'string', description: 'Optional password to protect the artifact' },
       },
       required: ['url'],
+    },
+  },
+  {
+    name: 'request_upload',
+    description: 'Get a presigned upload URL for large HTML files (over ~100KB). This is a two-step process: (1) call request_upload to get a presigned URL and upload token, (2) upload the file directly to that URL using curl or code execution, (3) call complete_upload with the upload_id to finalize. The presigned URL is valid for 2 hours and accepts PUT requests with the raw HTML file body. Example curl: curl -X PUT "<upload_url>" -H "Content-Type: text/html" --data-binary @file.html',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        filename: { type: 'string', description: 'Original filename (used for title extraction if no title given). Defaults to "artifact.html".' },
+        title: { type: 'string', description: 'Optional title for the artifact' },
+        slug: { type: 'string', description: 'Optional URL slug (auto-generated from title if not provided)' },
+        visibility: { type: 'string', enum: ['public', 'unlisted', 'password_protected'], description: 'Visibility setting (defaults to unlisted)' },
+        password: { type: 'string', description: 'Optional password to protect the artifact' },
+      },
+    },
+  },
+  {
+    name: 'complete_upload',
+    description: 'Finalize a presigned upload after the file has been uploaded via the URL from request_upload. This creates the artifact record and returns the shareable URL. Call this AFTER uploading the file to the presigned URL.',
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        upload_id: { type: 'string', description: 'The upload_id returned by request_upload' },
+      },
+      required: ['upload_id'],
     },
   },
   {

@@ -290,6 +290,153 @@ const handleToolCall = async (
       return { ...result, message: `${result.message} (fetched ${sizeMB}MB from URL)` };
     }
 
+    case 'request_upload': {
+      const artifactId = crypto.randomUUID();
+      const storagePath = `${userId}/${artifactId}.html`;
+
+      // Generate slug/title early so we can validate slug uniqueness now
+      const title = (args.title as string) || (args.filename as string)?.replace(/\.html?$/i, '') || 'Untitled Artifact';
+      let slug = args.slug ? slugify(args.slug as string) : slugify(title);
+      if (!slug) slug = generateTimestampSlug();
+
+      const { data: existingArtifact } = await admin
+        .from('artifacts')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('slug', slug)
+        .single();
+
+      if (existingArtifact) {
+        throw new Error(`An artifact with slug "${slug}" already exists. Provide a different slug.`);
+      }
+
+      // Create presigned upload URL
+      const { data: signedData, error: signError } = await admin.storage
+        .from('artifacts')
+        .createSignedUploadUrl(storagePath);
+
+      if (signError || !signedData) {
+        throw new Error(`Failed to create upload URL: ${signError?.message ?? 'unknown error'}`);
+      }
+
+      // Hash password if needed
+      let passwordHash: string | null = null;
+      const visibility = (args.visibility as string) || (args.password ? 'password_protected' : 'unlisted');
+      if (args.password && visibility === 'password_protected') {
+        passwordHash = await hashPassword(args.password as string);
+      }
+
+      // Store pending upload metadata
+      const { error: pendingError } = await admin
+        .from('pending_uploads')
+        .insert({
+          id: artifactId,
+          user_id: userId,
+          storage_path: storagePath,
+          title,
+          slug,
+          visibility,
+          password_hash: passwordHash,
+        });
+
+      if (pendingError) {
+        throw new Error(`Failed to create pending upload: ${pendingError.message}`);
+      }
+
+      return {
+        upload_id: artifactId,
+        upload_url: signedData.signedUrl,
+        storage_path: storagePath,
+        slug,
+        expires_in: '2 hours',
+        instructions: `Upload your HTML file to the upload_url using: curl -X PUT "${signedData.signedUrl}" -H "Content-Type: text/html" --data-binary @yourfile.html — then call complete_upload with upload_id "${artifactId}"`,
+      };
+    }
+
+    case 'complete_upload': {
+      const uploadId = args.upload_id as string;
+      if (!uploadId) throw new Error('upload_id is required');
+
+      // Look up pending upload
+      const { data: pending } = await admin
+        .from('pending_uploads')
+        .select('*')
+        .eq('id', uploadId)
+        .eq('user_id', userId)
+        .single();
+
+      if (!pending) {
+        throw new Error('Upload not found or expired. Call request_upload to get a new URL.');
+      }
+
+      // Check expiration
+      if (new Date(pending.expires_at) < new Date()) {
+        await admin.from('pending_uploads').delete().eq('id', uploadId);
+        throw new Error('Upload URL has expired. Call request_upload to get a new URL.');
+      }
+
+      // Verify the file was actually uploaded to storage
+      const { data: fileData, error: downloadError } = await admin.storage
+        .from('artifacts')
+        .download(pending.storage_path);
+
+      if (downloadError || !fileData) {
+        throw new Error('File not found at upload URL. Make sure you uploaded the file before calling complete_upload.');
+      }
+
+      const html = await fileData.text();
+      const fileSize = new Blob([html]).size;
+
+      if (fileSize > MAX_FILE_SIZE) {
+        await admin.storage.from('artifacts').remove([pending.storage_path]);
+        await admin.from('pending_uploads').delete().eq('id', uploadId);
+        throw new Error(`File too large (${(fileSize / (1024 * 1024)).toFixed(2)}MB). Maximum is 5MB.`);
+      }
+
+      // Content scanning
+      const scan = scanContent(html);
+      if (!scan.safe) {
+        await admin.storage.from('artifacts').remove([pending.storage_path]);
+        await admin.from('pending_uploads').delete().eq('id', uploadId);
+        throw new Error(`Content flagged: ${scan.flags.join(', ')}`);
+      }
+
+      // Auto-extract title if the pending one is generic
+      const finalTitle = (pending.title === 'Untitled Artifact')
+        ? (extractTitle(html) || pending.title)
+        : pending.title;
+
+      // Create the artifact record
+      const { data: artifact, error: dbError } = await admin
+        .from('artifacts')
+        .insert({
+          id: uploadId,
+          user_id: userId,
+          slug: pending.slug,
+          title: finalTitle,
+          visibility: pending.visibility,
+          password_hash: pending.password_hash,
+          storage_path: pending.storage_path,
+          file_size: fileSize,
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        throw new Error(`Database error: ${dbError.message}`);
+      }
+
+      // Clean up pending record
+      await admin.from('pending_uploads').delete().eq('id', uploadId);
+
+      const url = `${ARTIFACT_URL}/${user.username}/${pending.slug}.html`;
+      return {
+        artifact,
+        url,
+        message: `Artifact uploaded successfully! View at: ${url} (${(fileSize / 1024).toFixed(1)}KB)`,
+      };
+    }
+
     case 'list_artifacts': {
       const { data: artifacts } = await admin
         .from('artifacts')
