@@ -11,6 +11,9 @@ const ACCESS_TOKEN_TTL = 60 * 60; // 1 hour in seconds
 const REFRESH_TOKEN_TTL = 30 * 24 * 60 * 60; // 30 days in seconds
 
 export const POST = async (request: NextRequest) => {
+  console.log('[oauth/token] POST request received');
+  console.log('[oauth/token] Content-Type:', request.headers.get('content-type'));
+
   // OAuth token endpoint uses application/x-www-form-urlencoded
   const contentType = request.headers.get('content-type') || '';
   let params: URLSearchParams;
@@ -28,6 +31,11 @@ export const POST = async (request: NextRequest) => {
   }
 
   const grantType = params.get('grant_type');
+  console.log('[oauth/token] grant_type:', grantType);
+  console.log('[oauth/token] client_id:', params.get('client_id'));
+  console.log('[oauth/token] redirect_uri:', params.get('redirect_uri'));
+  console.log('[oauth/token] has code:', !!params.get('code'));
+  console.log('[oauth/token] has code_verifier:', !!params.get('code_verifier'));
 
   if (grantType === 'authorization_code') {
     return handleAuthorizationCode(params);
@@ -61,8 +69,11 @@ const handleAuthorizationCode = async (params: URLSearchParams) => {
     .single();
 
   if (!authCode) {
+    console.log('[oauth/token] ERROR: auth code not found for hash');
     return tokenError('invalid_grant', 'Invalid or expired authorization code');
   }
+
+  console.log('[oauth/token] Auth code found, client_id:', authCode.client_id, 'redirect_uri:', authCode.redirect_uri);
 
   // Delete code immediately (single-use)
   await admin
@@ -72,23 +83,29 @@ const handleAuthorizationCode = async (params: URLSearchParams) => {
 
   // Check expiration
   if (new Date(authCode.expires_at) < new Date()) {
+    console.log('[oauth/token] ERROR: code expired at', authCode.expires_at);
     return tokenError('invalid_grant', 'Authorization code has expired');
   }
 
   // Validate client_id and redirect_uri match
   if (authCode.client_id !== clientId) {
+    console.log('[oauth/token] ERROR: client_id mismatch. Expected:', authCode.client_id, 'Got:', clientId);
     return tokenError('invalid_grant', 'client_id mismatch');
   }
 
   if (authCode.redirect_uri !== redirectUri) {
+    console.log('[oauth/token] ERROR: redirect_uri mismatch. Expected:', authCode.redirect_uri, 'Got:', redirectUri);
     return tokenError('invalid_grant', 'redirect_uri mismatch');
   }
 
   // Verify PKCE
   const pkceValid = await verifyPkceChallenge(codeVerifier, authCode.code_challenge);
   if (!pkceValid) {
+    console.log('[oauth/token] ERROR: PKCE verification failed');
     return tokenError('invalid_grant', 'PKCE code_verifier verification failed');
   }
+
+  console.log('[oauth/token] All checks passed, issuing tokens');
 
   // Generate tokens
   return issueTokens(admin, authCode.client_id, authCode.user_id, authCode.scope);

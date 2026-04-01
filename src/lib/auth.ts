@@ -81,23 +81,32 @@ export const getOAuthUser = async (request: NextRequest): Promise<{ userId: stri
   if (!authHeader?.startsWith('Bearer ')) return null;
 
   const token = authHeader.slice(7);
+  console.log('[auth] Token prefix:', token.substring(0, 10) + '...');
 
   // Skip tokens that look like API keys (sma_ prefix)
-  if (token.startsWith('sma_') && !token.startsWith('sma_at_')) return null;
+  if (token.startsWith('sma_') && !token.startsWith('sma_at_')) {
+    console.log('[auth] Skipping API key token');
+    return null;
+  }
 
   const tokenHash = await hashToken(token);
   const admin = createAdminClient();
 
-  const { data: tokenRecord } = await admin
+  const { data: tokenRecord, error: tokenError } = await admin
     .from('oauth_tokens')
     .select('user_id, expires_at')
     .eq('access_token_hash', tokenHash)
     .single();
 
+  console.log('[auth] Token lookup result:', tokenRecord ? 'found' : 'not found', tokenError ? `error: ${tokenError.message}` : '');
+
   if (!tokenRecord) return null;
 
   // Check expiration
-  if (new Date(tokenRecord.expires_at) < new Date()) return null;
+  if (new Date(tokenRecord.expires_at) < new Date()) {
+    console.log('[auth] Token expired at:', tokenRecord.expires_at);
+    return null;
+  }
 
   const { data: user } = await admin
     .from('users')

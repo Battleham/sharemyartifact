@@ -38,10 +38,21 @@ const generateSessionId = (): string => {
 };
 
 export const POST = async (request: NextRequest) => {
+  console.log('[mcp] POST received');
+  console.log('[mcp] Authorization header present:', !!request.headers.get('authorization'));
+
   const body = await request.json();
   const { method, params, id } = body;
+  console.log('[mcp] method:', method);
 
-  // Handle MCP protocol methods that don't require auth
+  // Require auth for ALL requests — server requires OAuth
+  const auth = await authenticateRequest(request);
+  console.log('[mcp] Auth result:', auth ? `authenticated as ${auth.userId}` : 'not authenticated');
+
+  if (!auth) {
+    return unauthorizedResponse(id);
+  }
+
   if (method === 'initialize') {
     const sessionId = generateSessionId();
     return NextResponse.json(
@@ -78,11 +89,6 @@ export const POST = async (request: NextRequest) => {
   }
 
   if (method === 'tools/call') {
-    const auth = await authenticateRequest(request);
-    if (!auth) {
-      return unauthorizedResponse(id);
-    }
-
     const toolName = params?.name;
     const args = params?.arguments || {};
 
@@ -116,7 +122,10 @@ export const POST = async (request: NextRequest) => {
 
 // GET — SSE stream for server-to-client messages (Streamable HTTP transport)
 export const GET = async (request: NextRequest) => {
+  console.log('[mcp] GET received');
+  console.log('[mcp] Authorization header present:', !!request.headers.get('authorization'));
   const auth = await authenticateRequest(request);
+  console.log('[mcp] GET auth result:', auth ? 'authenticated' : 'failed');
   if (!auth) {
     return new NextResponse(JSON.stringify({
       jsonrpc: '2.0',
