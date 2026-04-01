@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextRequest } from 'next/server';
+import { hashToken } from '@/lib/oauth';
 import type { User } from '@/types/database';
 
 export const getAuthenticatedUser = async (): Promise<{ userId: string; user: User } | null> => {
@@ -73,4 +74,37 @@ export const hashPassword = async (password: string): Promise<string> => {
 export const verifyPassword = async (password: string, hash: string): Promise<boolean> => {
   const inputHash = await hashPassword(password);
   return inputHash === hash;
+};
+
+export const getOAuthUser = async (request: NextRequest): Promise<{ userId: string; user: User } | null> => {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+
+  const token = authHeader.slice(7);
+
+  // Skip tokens that look like API keys (sma_ prefix)
+  if (token.startsWith('sma_') && !token.startsWith('sma_at_')) return null;
+
+  const tokenHash = await hashToken(token);
+  const admin = createAdminClient();
+
+  const { data: tokenRecord } = await admin
+    .from('oauth_tokens')
+    .select('user_id, expires_at')
+    .eq('access_token_hash', tokenHash)
+    .single();
+
+  if (!tokenRecord) return null;
+
+  // Check expiration
+  if (new Date(tokenRecord.expires_at) < new Date()) return null;
+
+  const { data: user } = await admin
+    .from('users')
+    .select('*')
+    .eq('id', tokenRecord.user_id)
+    .single();
+
+  if (!user) return null;
+  return { userId: tokenRecord.user_id, user };
 };

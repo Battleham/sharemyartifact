@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getApiKeyUser, hashPassword } from '@/lib/auth';
+import { getApiKeyUser, getOAuthUser, hashPassword } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MCP_TOOLS } from '@/lib/mcp-tools';
 import { extractTitle } from '@/lib/extract-title';
@@ -8,25 +8,65 @@ import { scanContent } from '@/lib/content-scanner';
 import type { User } from '@/types/database';
 
 const ARTIFACT_URL = process.env.NEXT_PUBLIC_ARTIFACT_URL ?? 'https://smya.pub';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://sharemyartifact.com';
+const PROTOCOL_VERSION = '2025-06-18';
+
+const unauthorizedResponse = (id: unknown) => {
+  return NextResponse.json(
+    {
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32000, message: 'Authentication required' },
+    },
+    {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': `Bearer realm="${APP_URL}/api/mcp", resource_metadata="${APP_URL}/.well-known/oauth-protected-resource"`,
+      },
+    }
+  );
+};
+
+const authenticateRequest = async (request: NextRequest) => {
+  // Try OAuth token first, then API key
+  return await getOAuthUser(request) ?? await getApiKeyUser(request);
+};
+
+// Generate a session ID (stateless — just a random identifier for protocol compliance)
+const generateSessionId = (): string => {
+  return crypto.randomUUID();
+};
 
 export const POST = async (request: NextRequest) => {
   const body = await request.json();
   const { method, params, id } = body;
 
-  // Handle MCP protocol methods
+  // Handle MCP protocol methods that don't require auth
   if (method === 'initialize') {
-    return NextResponse.json({
-      jsonrpc: '2.0',
-      id,
-      result: {
-        protocolVersion: '2024-11-05',
-        capabilities: { tools: {} },
-        serverInfo: {
-          name: 'sharemyartifact',
-          version: '1.0.0',
+    const sessionId = generateSessionId();
+    return NextResponse.json(
+      {
+        jsonrpc: '2.0',
+        id,
+        result: {
+          protocolVersion: PROTOCOL_VERSION,
+          capabilities: { tools: {} },
+          serverInfo: {
+            name: 'sharemyartifact',
+            version: '1.0.0',
+          },
         },
       },
-    });
+      {
+        headers: {
+          'Mcp-Session-Id': sessionId,
+        },
+      }
+    );
+  }
+
+  if (method === 'notifications/initialized') {
+    return new NextResponse(null, { status: 202 });
   }
 
   if (method === 'tools/list') {
@@ -38,14 +78,9 @@ export const POST = async (request: NextRequest) => {
   }
 
   if (method === 'tools/call') {
-    // Authenticate via API key
-    const auth = await getApiKeyUser(request);
+    const auth = await authenticateRequest(request);
     if (!auth) {
-      return NextResponse.json({
-        jsonrpc: '2.0',
-        id,
-        error: { code: -32000, message: 'Missing or invalid API key in Authorization header' },
-      });
+      return unauthorizedResponse(id);
     }
 
     const toolName = params?.name;
@@ -77,6 +112,21 @@ export const POST = async (request: NextRequest) => {
     id,
     error: { code: -32601, message: `Unknown method: ${method}` },
   });
+};
+
+// HEAD — return protocol version for discovery
+export const HEAD = () => {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Mcp-Protocol-Version': PROTOCOL_VERSION,
+    },
+  });
+};
+
+// DELETE — session termination
+export const DELETE = () => {
+  return new NextResponse(null, { status: 200 });
 };
 
 const handleToolCall = async (
