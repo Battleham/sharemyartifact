@@ -10,6 +10,11 @@ export const middleware = async (request: NextRequest) => {
   if (ARTIFACT_HOSTS.includes(host)) {
     const { pathname } = request.nextUrl;
 
+    // Allow well-known and OAuth paths through (for MCP OAuth discovery)
+    if (pathname.startsWith('/.well-known/') || pathname.startsWith('/oauth/') || pathname.startsWith('/api/mcp')) {
+      return updateSession(request);
+    }
+
     // Rewrite /username/slug.html → /api/serve/[username]/[slug]
     const match = pathname.match(/^\/([a-z0-9][a-z0-9_-]+)\/([a-z0-9][a-z0-9_-]*(?:\.html)?)$/);
     if (match) {
