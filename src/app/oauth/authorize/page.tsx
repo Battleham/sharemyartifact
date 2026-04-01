@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { OAuthConsentPage } from '@/components/OAuthConsentPage';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://sharemyartifact.com';
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://sharemyartifact.com').replace(/\/+$/, '');
 
 export default async function AuthorizePage({
   searchParams,

@@ -8,7 +8,7 @@ import { scanContent } from '@/lib/content-scanner';
 import type { User } from '@/types/database';
 
 const ARTIFACT_URL = process.env.NEXT_PUBLIC_ARTIFACT_URL ?? 'https://smya.pub';
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://sharemyartifact.com';
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://sharemyartifact.com').replace(/\/+$/, '');
 const PROTOCOL_VERSION = '2025-06-18';
 
 const unauthorizedResponse = (id: unknown) => {

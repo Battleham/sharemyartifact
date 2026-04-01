@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --yes)",
+      "Read(//d/AiDev/**)",
+      "Bash(npx create-next-app@latest sharemyartifact-temp --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --yes)",
+      "Bash(cp D:/AiDev/sharemyartifact-temp/next.config.ts D:/AiDev/sharemyartifact/)",
+      "Bash(cp D:/AiDev/sharemyartifact-temp/tsconfig.json D:/AiDev/sharemyartifact/)",
+      "Bash(cp D:/AiDev/sharemyartifact-temp/eslint.config.mjs D:/AiDev/sharemyartifact/)",
+      "Bash(cp D:/AiDev/sharemyartifact-temp/postcss.config.mjs D:/AiDev/sharemyartifact/)",
+      "Bash(cp D:/AiDev/sharemyartifact-temp/next-env.d.ts D:/AiDev/sharemyartifact/)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(cd:*)",
+      "Bash(npx vitest:*)",
+      "Bash(gh repo:*)",
+      "Bash(supabase --version)",
+      "Bash(supabase status:*)",
+      "Bash(supabase projects:*)",
+      "Bash(supabase init:*)",
+      "Bash(supabase link:*)",
+      "Bash(mv 001_create_users.sql 20260331000001_create_users.sql)",
+      "Bash(mv 002_create_artifacts.sql 20260331000002_create_artifacts.sql)",
+      "Bash(mv 003_create_api_keys.sql 20260331000003_create_api_keys.sql)",
+      "Bash(supabase db:*)",
+      "Bash(supabase storage:*)",
+      "Bash(curl:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(python -m json.tool)"
+    ]
+  }
+}
