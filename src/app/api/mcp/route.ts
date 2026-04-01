@@ -178,6 +178,80 @@ export const DELETE = () => {
   return new NextResponse(null, { status: 200 });
 };
 
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+const uploadHtml = async (
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  user: User,
+  html: string,
+  args: Record<string, unknown>
+) => {
+  const fileSize = new Blob([html]).size;
+  if (fileSize > MAX_FILE_SIZE) {
+    throw new Error(`File too large (${(fileSize / (1024 * 1024)).toFixed(2)}MB). Maximum is 5MB.`);
+  }
+
+  const scan = scanContent(html);
+  if (!scan.safe) {
+    throw new Error(`Content flagged: ${scan.flags.join(', ')}`);
+  }
+
+  const title = (args.title as string) || extractTitle(html) || 'Untitled Artifact';
+
+  let slug = args.slug ? slugify(args.slug as string) : slugify(title);
+  if (!slug) slug = generateTimestampSlug();
+
+  const { data: existing } = await admin
+    .from('artifacts')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('slug', slug)
+    .single();
+
+  if (existing) {
+    throw new Error(`An artifact with slug "${slug}" already exists. Use update_artifact to replace it, or provide a different slug.`);
+  }
+
+  const artifactId = crypto.randomUUID();
+  const storagePath = `${userId}/${artifactId}.html`;
+
+  const { error: storageError } = await admin.storage
+    .from('artifacts')
+    .upload(storagePath, html, { contentType: 'text/html', upsert: false });
+
+  if (storageError) throw new Error(`Storage error: ${storageError.message}`);
+
+  let passwordHash: string | null = null;
+  const visibility = (args.visibility as string) || (args.password ? 'password_protected' : 'unlisted');
+  if (args.password && visibility === 'password_protected') {
+    passwordHash = await hashPassword(args.password as string);
+  }
+
+  const { data: artifact, error: dbError } = await admin
+    .from('artifacts')
+    .insert({
+      id: artifactId,
+      user_id: userId,
+      slug,
+      title,
+      visibility,
+      password_hash: passwordHash,
+      storage_path: storagePath,
+      file_size: fileSize,
+    })
+    .select()
+    .single();
+
+  if (dbError) {
+    await admin.storage.from('artifacts').remove([storagePath]);
+    throw new Error(`Database error: ${dbError.message}`);
+  }
+
+  const url = `${ARTIFACT_URL}/${user.username}/${slug}.html`;
+  return { artifact, url, message: `Artifact uploaded successfully! View at: ${url}` };
+};
+
 const handleToolCall = async (
   userId: string,
   user: User,
@@ -190,71 +264,30 @@ const handleToolCall = async (
     case 'upload_artifact': {
       const html = args.html as string;
       if (!html) throw new Error('html is required');
+      return uploadHtml(admin, userId, user, html, args);
+    }
 
-      // Content scanning
-      const scan = scanContent(html);
-      if (!scan.safe) {
-        throw new Error(`Content flagged: ${scan.flags.join(', ')}`);
+    case 'upload_artifact_from_url': {
+      const url = args.url as string;
+      if (!url) throw new Error('url is required');
+
+      const response = await fetch(url, {
+        headers: { 'Accept': 'text/html, */*' },
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch URL (${response.status}): ${response.statusText}`);
       }
 
-      // Auto-extract title
-      const title = (args.title as string) || extractTitle(html) || 'Untitled Artifact';
-
-      // Generate slug
-      let slug = args.slug ? slugify(args.slug as string) : slugify(title);
-      if (!slug) slug = generateTimestampSlug();
-
-      // Check for slug conflict
-      const { data: existing } = await admin
-        .from('artifacts')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('slug', slug)
-        .single();
-
-      if (existing) {
-        throw new Error(`An artifact with slug "${slug}" already exists. Use update_artifact to replace it, or provide a different slug.`);
+      const html = await response.text();
+      if (!html.trim()) {
+        throw new Error('Fetched URL returned empty content');
       }
 
-      // Upload to storage
-      const artifactId = crypto.randomUUID();
-      const storagePath = `${userId}/${artifactId}.html`;
-
-      const { error: storageError } = await admin.storage
-        .from('artifacts')
-        .upload(storagePath, html, { contentType: 'text/html', upsert: false });
-
-      if (storageError) throw new Error(`Storage error: ${storageError.message}`);
-
-      // Hash password if provided
-      let passwordHash: string | null = null;
-      const visibility = (args.visibility as string) || (args.password ? 'password_protected' : 'unlisted');
-      if (args.password && visibility === 'password_protected') {
-        passwordHash = await hashPassword(args.password as string);
-      }
-
-      const { data: artifact, error: dbError } = await admin
-        .from('artifacts')
-        .insert({
-          id: artifactId,
-          user_id: userId,
-          slug,
-          title,
-          visibility,
-          password_hash: passwordHash,
-          storage_path: storagePath,
-          file_size: new Blob([html]).size,
-        })
-        .select()
-        .single();
-
-      if (dbError) {
-        await admin.storage.from('artifacts').remove([storagePath]);
-        throw new Error(`Database error: ${dbError.message}`);
-      }
-
-      const url = `${ARTIFACT_URL}/${user.username}/${slug}.html`;
-      return { artifact, url, message: `Artifact uploaded successfully! View at: ${url}` };
+      const sizeMB = (new Blob([html]).size / (1024 * 1024)).toFixed(2);
+      const result = await uploadHtml(admin, userId, user, html, args);
+      return { ...result, message: `${result.message} (fetched ${sizeMB}MB from URL)` };
     }
 
     case 'list_artifacts': {
