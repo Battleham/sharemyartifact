@@ -7,7 +7,7 @@ import { slugify, generateTimestampSlug } from '@/lib/slugify';
 import { scanContent } from '@/lib/content-scanner';
 import type { User } from '@/types/database';
 
-const ARTIFACT_URL = process.env.NEXT_PUBLIC_ARTIFACT_URL ?? 'https://smya.pub';
+const ARTIFACT_URL = (process.env.NEXT_PUBLIC_ARTIFACT_URL ?? 'https://smya.pub').replace(/\/+$/, '');
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://sharemyartifact.com').replace(/\/+$/, '');
 const PROTOCOL_VERSION = '2025-06-18';
 
@@ -111,6 +111,46 @@ export const POST = async (request: NextRequest) => {
     jsonrpc: '2.0',
     id,
     error: { code: -32601, message: `Unknown method: ${method}` },
+  });
+};
+
+// GET — SSE stream for server-to-client messages (Streamable HTTP transport)
+export const GET = async (request: NextRequest) => {
+  const auth = await authenticateRequest(request);
+  if (!auth) {
+    return new NextResponse(JSON.stringify({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32000, message: 'Authentication required' },
+    }), {
+      status: 401,
+      headers: {
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': `Bearer realm="${APP_URL}/api/mcp", resource_metadata="${APP_URL}/.well-known/oauth-protected-resource"`,
+      },
+    });
+  }
+
+  const sessionId = request.headers.get('mcp-session-id') || generateSessionId();
+
+  // Return an SSE stream that stays open for server-initiated messages
+  const stream = new ReadableStream({
+    start(controller) {
+      // Send an initial comment to establish the connection
+      controller.enqueue(new TextEncoder().encode(': connected\n\n'));
+    },
+    cancel() {
+      // Client disconnected
+    },
+  });
+
+  return new NextResponse(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'Mcp-Session-Id': sessionId,
+    },
   });
 };
 
