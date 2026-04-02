@@ -104,7 +104,22 @@ docs/
 
 ---
 
-## Section 6: Frontend Skills — When to Use What
+## Section 6: Feature Queue (`feature_que.md`)
+
+This file tracks feature ideas and their prioritization. It has two sections:
+
+- **Queue** — The prioritized table of features we're actively planning or building. Only update this section when the user explicitly discusses the feature queue (e.g., "let's look at the queue", "prioritize features", "update the queue").
+- **All Pending Features** — A dumping ground for ideas. When the user says "record an idea" or "add a feature idea", add it here using the format `- **Feature name** — short description`. Don't touch the Queue table.
+
+**Rules:**
+- Never move items into the Queue table unless the user asks to discuss/update the queue.
+- When updating the Queue table, use the columns: `#` (position), `Feature`, `Status`, `Date Added`, `Date Completed`.
+- Valid statuses: `Planned`, `In Progress`, `Done`, `On Hold`.
+- Set `Date Added` when an item enters the queue. Set `Date Completed` when status becomes `Done`.
+
+---
+
+## Section 7: Frontend Skills — When to Use What
 
 ### Design & Aesthetics
 - **`frontend-design`** — Use for any new UI component, page, or layout. Forces an aesthetic direction before writing code. Invoke before touching markup.

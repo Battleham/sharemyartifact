@@ -1,21 +1,5 @@
 export const MCP_TOOLS = [
   {
-    name: 'upload_artifact',
-    description: 'DEPRECATED — use request_upload + complete_upload instead, which is faster for all file sizes. This legacy tool sends HTML inline through MCP which is slow. If you must use it: only the html parameter is required.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        html: { type: 'string', description: 'The HTML content to upload' },
-        title: { type: 'string', description: 'Optional title (auto-extracted from <title> or <h1> if not provided)' },
-        slug: { type: 'string', description: 'Optional URL slug (auto-generated from title if not provided)' },
-        visibility: { type: 'string', enum: ['public', 'unlisted', 'password_protected'], description: 'Visibility setting (defaults to unlisted)' },
-        password: { type: 'string', description: 'Optional password to protect the artifact' },
-        ttl: { type: 'string', enum: ['10m', '1h', '12h', '1d', '2d', '365d', 'indefinite'], description: 'How long the artifact stays live. Defaults to 1d.' },
-      },
-      required: ['html'],
-    },
-  },
-  {
     name: 'upload_artifact_from_url',
     description: 'Upload an HTML artifact by fetching it from a URL. Use when the HTML is already hosted at a public URL. The server fetches the HTML and stores it. Supports any publicly accessible URL (raw GitHub files, gists, pastebin, etc.).',
     inputSchema: {
