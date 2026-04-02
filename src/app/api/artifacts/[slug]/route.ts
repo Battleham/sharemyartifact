@@ -3,6 +3,7 @@ import { getAuthenticatedUser, getApiKeyUser, hashPassword } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { slugify } from '@/lib/slugify';
 import { scanContent } from '@/lib/content-scanner';
+import { computeExpiresAt } from '@/lib/ttl';
 import type { UpdateArtifactRequest } from '@/types/api';
 
 const ARTIFACT_URL = process.env.NEXT_PUBLIC_ARTIFACT_URL ?? 'https://smya.pub';
@@ -122,6 +123,10 @@ export const PUT = async (
       updates.password_hash = await hashPassword(body.password);
       if (!body.visibility) updates.visibility = 'password_protected';
     }
+  }
+
+  if (body.ttl !== undefined) {
+    updates.expires_at = computeExpiresAt(body.ttl === 'indefinite' ? 'indefinite' : body.ttl ?? '1d');
   }
 
   const { data: updated, error: updateError } = await admin
