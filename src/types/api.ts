@@ -30,6 +30,7 @@ export interface ArtifactListItem {
   created_at: string;
   updated_at: string;
   url: string;
+  short_url?: string;
 }
 
 export interface ApiErrorResponse {

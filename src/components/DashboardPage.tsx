@@ -181,7 +181,7 @@ export function DashboardPage() {
                   <h3 className="truncate font-medium text-zinc-900 dark:text-zinc-100">
                     {artifact.title}
                   </h3>
-                  <div className="mt-1 flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+                  <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
                     <a
                       href={artifact.url}
                       target="_blank"
@@ -190,6 +190,9 @@ export function DashboardPage() {
                     >
                       {artifact.url}
                     </a>
+                    {artifact.short_url && (
+                      <CopyableShortUrl url={artifact.short_url} />
+                    )}
                     <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800">
                       {artifact.visibility}
                     </span>
@@ -208,6 +211,26 @@ export function DashboardPage() {
         )}
       </main>
     </div>
+  );
+}
+
+function CopyableShortUrl({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="shrink-0 rounded-md border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+      title="Copy short URL"
+    >
+      {copied ? 'Copied!' : url.replace('https://', '')}
+    </button>
   );
 }
 

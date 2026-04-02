@@ -118,7 +118,7 @@ export const GET = async (request: NextRequest) => {
   const admin = createAdminClient();
   const { data: artifacts, error } = await admin
     .from('artifacts')
-    .select('id, slug, title, visibility, view_count, created_at, updated_at')
+    .select('id, slug, title, visibility, view_count, short_code, created_at, updated_at')
     .eq('user_id', auth.userId)
     .order('created_at', { ascending: false });
 
@@ -126,9 +126,10 @@ export const GET = async (request: NextRequest) => {
     return NextResponse.json({ error: 'Failed to fetch artifacts' }, { status: 500 });
   }
 
-  const items = artifacts.map(a => ({
+  const items = artifacts.map(({ short_code, ...a }) => ({
     ...a,
     url: `${ARTIFACT_URL}/${auth.user.username}/${a.slug}.html`,
+    short_url: short_code ? `${ARTIFACT_URL}/${short_code}` : undefined,
   }));
 
   return NextResponse.json({ artifacts: items });
