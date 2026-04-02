@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { extractTitle } from '@/lib/extract-title';
 import { slugify, generateTimestampSlug } from '@/lib/slugify';
 import { scanContent } from '@/lib/content-scanner';
+import { computeExpiresAt } from '@/lib/ttl';
 import type { UploadArtifactRequest, UploadArtifactResponse } from '@/types/api';
 
 const ARTIFACT_URL = process.env.NEXT_PUBLIC_ARTIFACT_URL ?? 'https://smya.pub';
@@ -81,6 +82,8 @@ export const POST = async (request: NextRequest) => {
     passwordHash = await hashPassword(body.password);
   }
 
+  const expiresAt = computeExpiresAt(body.ttl ?? '1d');
+
   // Insert artifact record
   const { data: artifact, error: insertError } = await admin
     .from('artifacts')
@@ -93,6 +96,7 @@ export const POST = async (request: NextRequest) => {
       password_hash: passwordHash,
       storage_path: storagePath,
       file_size: new Blob([body.html]).size,
+      expires_at: expiresAt,
     })
     .select()
     .single();
@@ -118,7 +122,7 @@ export const GET = async (request: NextRequest) => {
   const admin = createAdminClient();
   const { data: artifacts, error } = await admin
     .from('artifacts')
-    .select('id, slug, title, visibility, view_count, short_code, created_at, updated_at')
+    .select('id, slug, title, visibility, view_count, short_code, expires_at, created_at, updated_at')
     .eq('user_id', auth.userId)
     .order('created_at', { ascending: false });
 
@@ -130,6 +134,7 @@ export const GET = async (request: NextRequest) => {
     ...a,
     url: `${ARTIFACT_URL}/${auth.user.username}/${a.slug}.html`,
     short_url: short_code ? `${ARTIFACT_URL}/${short_code}` : undefined,
+    expires_at: a.expires_at ?? null,
   }));
 
   return NextResponse.json({ artifacts: items });
