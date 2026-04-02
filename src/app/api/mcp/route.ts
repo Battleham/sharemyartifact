@@ -5,6 +5,7 @@ import { MCP_TOOLS } from '@/lib/mcp-tools';
 import { extractTitle } from '@/lib/extract-title';
 import { slugify, generateTimestampSlug } from '@/lib/slugify';
 import { scanContent } from '@/lib/content-scanner';
+import { computeExpiresAt } from '@/lib/ttl';
 import type { User } from '@/types/database';
 
 const ARTIFACT_URL = (process.env.NEXT_PUBLIC_ARTIFACT_URL ?? 'https://smya.pub').replace(/\/+$/, '');
@@ -236,6 +237,7 @@ const uploadHtml = async (
   }
 
   const shortCode = generateShortCode();
+  const expiresAt = computeExpiresAt((args.ttl as string) ?? '1d');
 
   const { data: artifact, error: dbError } = await admin
     .from('artifacts')
@@ -249,6 +251,7 @@ const uploadHtml = async (
       storage_path: storagePath,
       file_size: fileSize,
       short_code: shortCode,
+      expires_at: expiresAt,
     })
     .select()
     .single();
@@ -260,7 +263,8 @@ const uploadHtml = async (
 
   const url = `${ARTIFACT_URL}/${user.username}/${slug}.html`;
   const shortUrl = `${ARTIFACT_URL}/${shortCode}`;
-  return { artifact, url, short_url: shortUrl, message: `Artifact uploaded! View at: ${url} (short: ${shortUrl})` };
+  const expiresLabel = expiresAt ? `expires: ${expiresAt}` : 'no expiration';
+  return { artifact, url, short_url: shortUrl, message: `Artifact uploaded! View at: ${url} (short: ${shortUrl}) (${expiresLabel})` };
 };
 
 const handleToolCall = async (
@@ -348,6 +352,7 @@ const handleToolCall = async (
           slug,
           visibility,
           password_hash: passwordHash,
+          ttl: (args.ttl as string) ?? '1d',
         });
 
       if (pendingError) {
@@ -419,6 +424,7 @@ const handleToolCall = async (
 
       // Create the artifact record
       const shortCode = generateShortCode();
+      const expiresAt = computeExpiresAt(pending.ttl ?? '1d');
       const { data: artifact, error: dbError } = await admin
         .from('artifacts')
         .insert({
@@ -431,6 +437,7 @@ const handleToolCall = async (
           storage_path: pending.storage_path,
           file_size: fileSize,
           short_code: shortCode,
+          expires_at: expiresAt,
         })
         .select()
         .single();
@@ -444,18 +451,19 @@ const handleToolCall = async (
 
       const url = `${ARTIFACT_URL}/${user.username}/${pending.slug}.html`;
       const shortUrl = `${ARTIFACT_URL}/${shortCode}`;
+      const expiresLabel = expiresAt ? `expires: ${expiresAt}` : 'no expiration';
       return {
         artifact,
         url,
         short_url: shortUrl,
-        message: `Artifact uploaded! View at: ${url} (short: ${shortUrl})`,
+        message: `Artifact uploaded! View at: ${url} (short: ${shortUrl}) (${expiresLabel})`,
       };
     }
 
     case 'list_artifacts': {
       const { data: artifacts } = await admin
         .from('artifacts')
-        .select('slug, title, visibility, view_count, short_code, created_at, updated_at')
+        .select('slug, title, visibility, view_count, short_code, expires_at, created_at, updated_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
@@ -463,6 +471,7 @@ const handleToolCall = async (
         ...a,
         url: `${ARTIFACT_URL}/${user.username}/${a.slug}.html`,
         short_url: a.short_code ? `${ARTIFACT_URL}/${a.short_code}` : undefined,
+        expires_at: a.expires_at ?? null,
       }));
     }
 
@@ -495,6 +504,10 @@ const handleToolCall = async (
       if (args.title) updates.title = args.title;
       if (args.visibility) updates.visibility = args.visibility;
       if (args.new_slug) updates.slug = args.new_slug;
+
+      if (args.ttl !== undefined) {
+        updates.expires_at = computeExpiresAt((args.ttl as string) === 'indefinite' ? 'indefinite' : (args.ttl as string) ?? '1d');
+      }
 
       if (args.password) {
         updates.password_hash = await hashPassword(args.password as string);
