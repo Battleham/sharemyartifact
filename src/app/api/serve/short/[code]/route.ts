@@ -19,6 +19,11 @@ export const GET = async (
     return new NextResponse('Not Found', { status: 404 });
   }
 
+  // Check expiration
+  if (artifact.expires_at && new Date(artifact.expires_at) < new Date()) {
+    return new NextResponse('Not Found', { status: 404 });
+  }
+
   // Password-protected → redirect to full URL (which has the password gate)
   if (artifact.visibility === 'password_protected' && artifact.password_hash) {
     const { data: owner } = await admin

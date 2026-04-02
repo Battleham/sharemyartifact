@@ -84,6 +84,11 @@ export const GET = async (
     return new NextResponse('Not Found', { status: 404 });
   }
 
+  // Check expiration
+  if (artifact.expires_at && new Date(artifact.expires_at) < new Date()) {
+    return new NextResponse('Not Found', { status: 404 });
+  }
+
   // Password-protected → show gate
   if (artifact.visibility === 'password_protected' && artifact.password_hash) {
     return new NextResponse(PASSWORD_GATE_HTML(username, slug), {
@@ -122,6 +127,11 @@ export const POST = async (
     .single();
 
   if (!artifact) {
+    return new NextResponse('Not Found', { status: 404 });
+  }
+
+  // Check expiration
+  if (artifact.expires_at && new Date(artifact.expires_at) < new Date()) {
     return new NextResponse('Not Found', { status: 404 });
   }
 
