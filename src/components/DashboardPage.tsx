@@ -297,15 +297,16 @@ function ExpirationBadge({ expiresAt, slug, onUpdated }: { expiresAt: string | n
 
   return (
     <button
-      onClick={() => setEditing(true)}
+      onClick={() => !isExpired && setEditing(true)}
+      disabled={!!isExpired}
       className={`shrink-0 rounded-full px-2 py-0.5 text-xs transition-colors ${
         isExpired
-          ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+          ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300 cursor-not-allowed opacity-75'
           : expiresAt
             ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
             : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
       }`}
-      title={expiresAt ? `Expires: ${new Date(expiresAt).toLocaleString()}` : 'No expiration — click to set'}
+      title={isExpired ? 'This artifact has expired' : expiresAt ? `Expires: ${new Date(expiresAt).toLocaleString()}` : 'No expiration — click to set'}
     >
       {label}
     </button>
