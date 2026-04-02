@@ -4,6 +4,8 @@ import { useState, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import type { ArtifactListItem } from '@/types/api';
+import { TTL_OPTIONS, TTL_LABELS, formatTimeRemaining } from '@/lib/ttl';
+import type { TtlValue } from '@/lib/ttl';
 
 export function DashboardPage() {
   const [artifacts, setArtifacts] = useState<ArtifactListItem[]>([]);
@@ -48,6 +50,7 @@ export function DashboardPage() {
 
     const html = await file.text();
     const visibilitySelect = form.elements.namedItem('visibility') as HTMLSelectElement;
+    const ttlSelect = form.elements.namedItem('ttl') as HTMLSelectElement;
 
     const res = await fetch('/api/artifacts', {
       method: 'POST',
@@ -55,6 +58,7 @@ export function DashboardPage() {
       body: JSON.stringify({
         html,
         visibility: visibilitySelect.value,
+        ttl: ttlSelect.value,
       }),
     });
 
@@ -149,6 +153,21 @@ export function DashboardPage() {
                   <option value="unlisted">Unlisted</option>
                 </select>
               </div>
+              <div>
+                <label htmlFor="ttl" className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Expires after
+                </label>
+                <select
+                  id="ttl"
+                  name="ttl"
+                  defaultValue="1d"
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                >
+                  {TTL_OPTIONS.map(opt => (
+                    <option key={opt} value={opt}>{TTL_LABELS[opt]}</option>
+                  ))}
+                </select>
+              </div>
               {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <button
                 type="submit"
@@ -197,6 +216,11 @@ export function DashboardPage() {
                       {artifact.visibility}
                     </span>
                     <span className="shrink-0">{artifact.view_count} views</span>
+                    <ExpirationBadge
+                      expiresAt={artifact.expires_at}
+                      slug={artifact.slug}
+                      onUpdated={fetchArtifacts}
+                    />
                   </div>
                 </div>
                 <button
@@ -230,6 +254,60 @@ function CopyableShortUrl({ url }: { url: string }) {
       title="Copy short URL"
     >
       {copied ? 'Copied!' : url.replace('https://', '')}
+    </button>
+  );
+}
+
+function ExpirationBadge({ expiresAt, slug, onUpdated }: { expiresAt: string | null; slug: string; onUpdated: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleTtlChange = async (newTtl: string) => {
+    setSaving(true);
+    const res = await fetch(`/api/artifacts/${slug}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl: newTtl }),
+    });
+    setSaving(false);
+    setEditing(false);
+    if (res.ok) onUpdated();
+  };
+
+  if (editing) {
+    return (
+      <select
+        autoFocus
+        disabled={saving}
+        className="shrink-0 rounded-md border border-zinc-300 bg-white px-2 py-0.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+        defaultValue=""
+        onChange={e => handleTtlChange(e.target.value)}
+        onBlur={() => setEditing(false)}
+      >
+        <option value="" disabled>Change TTL...</option>
+        {TTL_OPTIONS.map(opt => (
+          <option key={opt} value={opt}>{TTL_LABELS[opt]}</option>
+        ))}
+      </select>
+    );
+  }
+
+  const label = formatTimeRemaining(expiresAt);
+  const isExpired = expiresAt && new Date(expiresAt) < new Date();
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      className={`shrink-0 rounded-full px-2 py-0.5 text-xs transition-colors ${
+        isExpired
+          ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+          : expiresAt
+            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+            : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+      }`}
+      title={expiresAt ? `Expires: ${new Date(expiresAt).toLocaleString()}` : 'No expiration — click to set'}
+    >
+      {label}
     </button>
   );
 }
