@@ -6,6 +6,7 @@ export interface UploadArtifactRequest {
   slug?: string;
   visibility?: ArtifactVisibility;
   password?: string;
+  ttl?: string;
 }
 
 export interface UploadArtifactResponse {
@@ -19,6 +20,7 @@ export interface UpdateArtifactRequest {
   slug?: string;
   visibility?: ArtifactVisibility;
   password?: string | null; // null to remove password
+  ttl?: string;
 }
 
 export interface ArtifactListItem {
@@ -31,6 +33,7 @@ export interface ArtifactListItem {
   updated_at: string;
   url: string;
   short_url?: string;
+  expires_at: string | null;
 }
 
 export interface ApiErrorResponse {

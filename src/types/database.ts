@@ -19,6 +19,7 @@ export interface Artifact {
   last_accessed_at: string | null;
   created_at: string;
   updated_at: string;
+  expires_at: string | null;
 }
 
 export interface ApiKey {
