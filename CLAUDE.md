@@ -78,6 +78,8 @@ docs/
 - **Don't forget UI states.** Every async operation needs: loading, success, error, and empty states. No exceptions.
 - **Don't restrict artifact JavaScript.** Never add CSP rules that block fetch, XHR, scripts, or network access on `smya.pub`. This is the #1 product requirement.
 - **Don't add friction to uploads.** If you're tempted to add a required field to the upload flow, stop and find a way to make it automatic.
+- **Don't prefix App Router route directories with `_`.** Next.js treats `_`-prefixed directories as private and won't generate routes for them. Use plain names (e.g., `short/[code]` not `_short/[code]`).
+- **Don't forget to push DB migrations.** When adding Supabase migrations, always run `npx supabase db push --linked` to apply them to production before deploying.
 
 ---
 

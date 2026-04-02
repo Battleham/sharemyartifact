@@ -19,7 +19,7 @@ export const middleware = async (request: NextRequest) => {
     const shortMatch = pathname.match(/^\/([a-z0-9]{7})$/);
     if (shortMatch) {
       const url = request.nextUrl.clone();
-      url.pathname = `/api/serve/_short/${shortMatch[1]}`;
+      url.pathname = `/api/serve/short/${shortMatch[1]}`;
       return NextResponse.rewrite(url);
     }
 
