@@ -1,7 +1,7 @@
 export const MCP_TOOLS = [
   {
     name: 'upload_artifact',
-    description: 'Upload an HTML artifact to ShareMyArtifact. Returns a shareable URL. Only the html parameter is required — title, slug, visibility, and password are all optional. Best for files under ~100KB. For larger files, use request_upload to get a presigned URL and upload directly.',
+    description: 'DEPRECATED — use request_upload + complete_upload instead, which is faster for all file sizes. This legacy tool sends HTML inline through MCP which is slow. If you must use it: only the html parameter is required.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -31,7 +31,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'request_upload',
-    description: 'Get a presigned upload URL for large HTML files (over ~100KB). This is a two-step process: (1) call request_upload to get a presigned URL and upload token, (2) upload the file directly to that URL using curl or code execution, (3) call complete_upload with the upload_id to finalize. The presigned URL is valid for 2 hours and accepts PUT requests with the raw HTML file body. Example curl: curl -X PUT "<upload_url>" -H "Content-Type: text/html" --data-binary @file.html',
+    description: 'Upload an HTML artifact to ShareMyArtifact. This is the recommended upload method for ALL file sizes. Steps: (1) call request_upload to get a presigned URL, (2) upload the file directly to that URL using curl or code execution, (3) call complete_upload with the upload_id to finalize. The presigned URL is valid for 2 hours and accepts PUT requests with the raw HTML file body. Example curl: curl -X PUT "<upload_url>" -H "Content-Type: text/html" --data-binary @file.html',
     inputSchema: {
       type: 'object' as const,
       properties: {
