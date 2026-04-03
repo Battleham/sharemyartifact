@@ -11,3 +11,17 @@ export const slugify = (text: string): string => {
 export const generateTimestampSlug = (): string => {
   return `artifact-${Date.now()}`;
 };
+
+export const disambiguateSlug = async (
+  baseSlug: string,
+  exists: (slug: string) => Promise<boolean>,
+): Promise<string> => {
+  if (!(await exists(baseSlug))) return baseSlug;
+
+  for (let i = 2; i <= 100; i++) {
+    const candidate = `${baseSlug}-${i}`;
+    if (!(await exists(candidate))) return candidate;
+  }
+
+  return generateTimestampSlug();
+};
