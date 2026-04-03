@@ -508,6 +508,7 @@ const handleToolCall = async (
           updated_at: new Date().toISOString(),
         };
         if (finalTitle && finalTitle !== 'Untitled Artifact') updates.title = finalTitle;
+        if (pending.ttl) updates.expires_at = computeExpiresAt(pending.ttl);
 
         const { data: artifact, error: dbError } = await admin
           .from('artifacts')
