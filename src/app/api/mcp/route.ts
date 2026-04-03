@@ -320,12 +320,13 @@ const handleToolCall = async (
 
       // Auto-disambiguate slug
       const slugExists = async (candidate: string): Promise<boolean> => {
-        const { data } = await admin
+        const { data, error } = await admin
           .from('artifacts')
           .select('id')
           .eq('user_id', userId)
           .eq('slug', candidate)
-          .single();
+          .maybeSingle();
+        if (error) throw new Error(`Slug check failed: ${error.message}`);
         return !!data;
       };
 
