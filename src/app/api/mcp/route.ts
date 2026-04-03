@@ -210,16 +210,18 @@ const uploadHtml = async (
   let slug = args.slug ? slugify(args.slug as string) : slugify(title);
   if (!slug) slug = generateTimestampSlug();
 
-  const { data: existing } = await admin
-    .from('artifacts')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('slug', slug)
-    .single();
+  const slugExists = async (candidate: string): Promise<boolean> => {
+    const { data, error } = await admin
+      .from('artifacts')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('slug', candidate)
+      .maybeSingle();
+    if (error) throw new Error(`Slug check failed: ${error.message}`);
+    return !!data;
+  };
 
-  if (existing) {
-    throw new Error(`An artifact with slug "${slug}" already exists. Use update_artifact to replace it, or provide a different slug.`);
-  }
+  slug = await disambiguateSlug(slug, slugExists);
 
   const artifactId = crypto.randomUUID();
   const storagePath = `${userId}/${artifactId}.html`;
