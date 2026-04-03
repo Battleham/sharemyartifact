@@ -17,13 +17,14 @@ export const MCP_TOOLS = [
   },
   {
     name: 'request_upload',
-    description: 'Upload an HTML artifact to ShareMyArtifact. This is the recommended upload method for ALL file sizes. Steps: (1) call request_upload to get a presigned URL, (2) upload the file directly to that URL using curl or code execution, (3) call complete_upload with the upload_id to finalize. The presigned URL is valid for 2 hours and accepts PUT requests with the raw HTML file body. Example curl: curl -X PUT "<upload_url>" -H "Content-Type: text/html" --data-binary @file.html',
+    description: 'Upload or update an HTML artifact on ShareMyArtifact. This is the recommended method for ALL file sizes. For new uploads, omit existing_slug. To replace the HTML content of an existing artifact, pass existing_slug — this updates the content in place. Steps: (1) call request_upload to get a presigned URL, (2) upload the file directly to that URL using curl or code execution, (3) call complete_upload with the upload_id to finalize. The presigned URL is valid for 2 hours and accepts PUT requests with the raw HTML file body. Example curl: curl -X PUT "<upload_url>" -H "Content-Type: text/html" --data-binary @file.html',
     inputSchema: {
       type: 'object' as const,
       properties: {
+        existing_slug: { type: 'string', description: 'If updating an existing artifact, pass its slug here. The upload will replace its HTML content. Omit for new uploads.' },
         filename: { type: 'string', description: 'Original filename (used for title extraction if no title given). Defaults to "artifact.html".' },
         title: { type: 'string', description: 'Optional title for the artifact' },
-        slug: { type: 'string', description: 'Optional URL slug (auto-generated from title if not provided)' },
+        slug: { type: 'string', description: 'Optional URL slug for new uploads (auto-generated from title if not provided). Ignored when existing_slug is set.' },
         visibility: { type: 'string', enum: ['public', 'unlisted', 'password_protected'], description: 'Visibility setting (defaults to unlisted)' },
         password: { type: 'string', description: 'Optional password to protect the artifact' },
         ttl: { type: 'string', enum: ['10m', '1h', '12h', '1d', '2d', '365d', 'indefinite'], description: 'How long the artifact stays live. Defaults to 1d.' },
@@ -51,12 +52,11 @@ export const MCP_TOOLS = [
   },
   {
     name: 'update_artifact',
-    description: 'Update an existing artifact. Use slug to identify which artifact to update.',
+    description: 'Update metadata of an existing artifact (title, slug, visibility, password, TTL). To update HTML content, use request_upload with the existing slug instead — this replaces the content via presigned upload.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         slug: { type: 'string', description: 'The slug of the artifact to update' },
-        html: { type: 'string', description: 'New HTML content (replaces existing)' },
         title: { type: 'string', description: 'New title' },
         new_slug: { type: 'string', description: 'New URL slug' },
         visibility: { type: 'string', enum: ['public', 'unlisted', 'password_protected'] },

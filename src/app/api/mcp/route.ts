@@ -306,38 +306,61 @@ const handleToolCall = async (
     }
 
     case 'request_upload': {
-      const artifactId = crypto.randomUUID();
-      const storagePath = `${userId}/${artifactId}.html`;
+      const existingSlug = args.existing_slug as string | undefined;
 
-      // Generate slug/title early so we can validate slug uniqueness now
-      const title = (args.title as string) || (args.filename as string)?.replace(/\.html?$/i, '') || 'Untitled Artifact';
-      let slug = args.slug ? slugify(args.slug as string) : slugify(title);
-      if (!slug) slug = generateTimestampSlug();
+      // If updating an existing artifact, look it up and reuse its storage path
+      let existingArtifact: { id: string; storage_path: string; slug: string } | null = null;
+      if (existingSlug) {
+        const { data } = await admin
+          .from('artifacts')
+          .select('id, storage_path, slug')
+          .eq('user_id', userId)
+          .eq('slug', existingSlug)
+          .single();
 
-      const { data: existingArtifact } = await admin
-        .from('artifacts')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('slug', slug)
-        .single();
-
-      if (existingArtifact) {
-        throw new Error(`An artifact with slug "${slug}" already exists. Provide a different slug.`);
+        if (!data) throw new Error(`Artifact "${existingSlug}" not found. Cannot update.`);
+        existingArtifact = data;
       }
 
-      // Create presigned upload URL
-      const { data: signedData, error: signError } = await admin.storage
-        .from('artifacts')
-        .createSignedUploadUrl(storagePath);
+      const artifactId = existingArtifact?.id ?? crypto.randomUUID();
+      const storagePath = existingArtifact?.storage_path ?? `${userId}/${artifactId}.html`;
+
+      // For new uploads, generate slug/title and validate uniqueness
+      let slug: string;
+      let title: string;
+      if (existingArtifact) {
+        slug = existingArtifact.slug;
+        title = (args.title as string) || '';
+      } else {
+        title = (args.title as string) || (args.filename as string)?.replace(/\.html?$/i, '') || 'Untitled Artifact';
+        slug = args.slug ? slugify(args.slug as string) : slugify(title);
+        if (!slug) slug = generateTimestampSlug();
+
+        const { data: slugConflict } = await admin
+          .from('artifacts')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('slug', slug)
+          .single();
+
+        if (slugConflict) {
+          throw new Error(`An artifact with slug "${slug}" already exists. Provide a different slug.`);
+        }
+      }
+
+      // Create presigned upload URL (upsert for updates)
+      const { data: signedData, error: signError } = existingArtifact
+        ? await admin.storage.from('artifacts').createSignedUploadUrl(storagePath, { upsert: true })
+        : await admin.storage.from('artifacts').createSignedUploadUrl(storagePath);
 
       if (signError || !signedData) {
         throw new Error(`Failed to create upload URL: ${signError?.message ?? 'unknown error'}`);
       }
 
-      // Hash password if needed
+      // Hash password if needed (only for new uploads)
       let passwordHash: string | null = null;
       const visibility = (args.visibility as string) || (args.password ? 'password_protected' : 'unlisted');
-      if (args.password && visibility === 'password_protected') {
+      if (!existingArtifact && args.password && visibility === 'password_protected') {
         passwordHash = await hashPassword(args.password as string);
       }
 
@@ -348,22 +371,25 @@ const handleToolCall = async (
           id: artifactId,
           user_id: userId,
           storage_path: storagePath,
-          title,
+          title: title || 'Untitled Artifact',
           slug,
           visibility,
           password_hash: passwordHash,
           ttl: (args.ttl as string) ?? '1d',
+          is_update: !!existingArtifact,
         });
 
       if (pendingError) {
         throw new Error(`Failed to create pending upload: ${pendingError.message}`);
       }
 
+      const mode = existingArtifact ? 'update' : 'new';
       return {
         upload_id: artifactId,
         upload_url: signedData.signedUrl,
         storage_path: storagePath,
         slug,
+        mode,
         expires_in: '2 hours',
         instructions: `Upload your HTML file to the upload_url using: curl -X PUT "${signedData.signedUrl}" -H "Content-Type: text/html" --data-binary @yourfile.html — then call complete_upload with upload_id "${artifactId}"`,
       };
@@ -422,7 +448,40 @@ const handleToolCall = async (
         ? (extractTitle(html) || pending.title)
         : pending.title;
 
-      // Create the artifact record
+      if (pending.is_update) {
+        // Update existing artifact's metadata
+        const updates: Record<string, unknown> = {
+          file_size: fileSize,
+          updated_at: new Date().toISOString(),
+        };
+        if (finalTitle && finalTitle !== 'Untitled Artifact') updates.title = finalTitle;
+
+        const { data: artifact, error: dbError } = await admin
+          .from('artifacts')
+          .update(updates)
+          .eq('id', uploadId)
+          .eq('user_id', userId)
+          .select('*, short_code')
+          .single();
+
+        if (dbError) {
+          throw new Error(`Database error: ${dbError.message}`);
+        }
+
+        // Clean up pending record
+        await admin.from('pending_uploads').delete().eq('id', uploadId);
+
+        const url = `${ARTIFACT_URL}/${user.username}/${pending.slug}.html`;
+        const shortUrl = artifact.short_code ? `${ARTIFACT_URL}/${artifact.short_code}` : undefined;
+        return {
+          artifact,
+          url,
+          short_url: shortUrl,
+          message: `Artifact content updated! View at: ${url}`,
+        };
+      }
+
+      // Create new artifact record
       const shortCode = generateShortCode();
       const expiresAt = computeExpiresAt(pending.ttl ?? '1d');
       const { data: artifact, error: dbError } = await admin
@@ -489,17 +548,6 @@ const handleToolCall = async (
       if (!existing) throw new Error(`Artifact "${slug}" not found`);
 
       const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-
-      if (args.html) {
-        const scan = scanContent(args.html as string);
-        if (!scan.safe) {
-          throw new Error(`Content flagged: ${scan.flags.join(', ')}`);
-        }
-        await admin.storage
-          .from('artifacts')
-          .update(existing.storage_path, args.html as string, { contentType: 'text/html' });
-        updates.file_size = new Blob([args.html as string]).size;
-      }
 
       if (args.title) updates.title = args.title;
       if (args.visibility) updates.visibility = args.visibility;
