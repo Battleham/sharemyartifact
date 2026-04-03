@@ -3,7 +3,7 @@ import { getApiKeyUser, getOAuthUser, hashPassword } from '@/lib/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MCP_TOOLS } from '@/lib/mcp-tools';
 import { extractTitle } from '@/lib/extract-title';
-import { slugify, generateTimestampSlug } from '@/lib/slugify';
+import { slugify, generateTimestampSlug, disambiguateSlug } from '@/lib/slugify';
 import { scanContent } from '@/lib/content-scanner';
 import { computeExpiresAt } from '@/lib/ttl';
 import type { User } from '@/types/database';
@@ -306,61 +306,47 @@ const handleToolCall = async (
     }
 
     case 'request_upload': {
-      const existingSlug = args.existing_slug as string | undefined;
+      const title = (args.title as string) || (args.filename as string)?.replace(/\.html?$/i, '') || 'Untitled Artifact';
+      let baseSlug = args.slug ? slugify(args.slug as string) : slugify(title);
+      if (!baseSlug) baseSlug = generateTimestampSlug();
 
-      // If updating an existing artifact, look it up and reuse its storage path
-      let existingArtifact: { id: string; storage_path: string; slug: string } | null = null;
-      if (existingSlug) {
+      // Check for similar existing artifacts (for collision hints)
+      const { data: similarArtifacts } = await admin
+        .from('artifacts')
+        .select('slug, title, created_at, view_count')
+        .eq('user_id', userId)
+        .ilike('slug', `${baseSlug}%`)
+        .limit(5);
+
+      // Auto-disambiguate slug
+      const slugExists = async (candidate: string): Promise<boolean> => {
         const { data } = await admin
-          .from('artifacts')
-          .select('id, storage_path, slug')
-          .eq('user_id', userId)
-          .eq('slug', existingSlug)
-          .single();
-
-        if (!data) throw new Error(`Artifact "${existingSlug}" not found. Cannot update.`);
-        existingArtifact = data;
-      }
-
-      const artifactId = existingArtifact?.id ?? crypto.randomUUID();
-      const storagePath = existingArtifact?.storage_path ?? `${userId}/${artifactId}.html`;
-
-      // For new uploads, generate slug/title and validate uniqueness
-      let slug: string;
-      let title: string;
-      if (existingArtifact) {
-        slug = existingArtifact.slug;
-        title = (args.title as string) || '';
-      } else {
-        title = (args.title as string) || (args.filename as string)?.replace(/\.html?$/i, '') || 'Untitled Artifact';
-        slug = args.slug ? slugify(args.slug as string) : slugify(title);
-        if (!slug) slug = generateTimestampSlug();
-
-        const { data: slugConflict } = await admin
           .from('artifacts')
           .select('id')
           .eq('user_id', userId)
-          .eq('slug', slug)
+          .eq('slug', candidate)
           .single();
+        return !!data;
+      };
 
-        if (slugConflict) {
-          throw new Error(`An artifact with slug "${slug}" already exists. Provide a different slug.`);
-        }
-      }
+      const slug = await disambiguateSlug(baseSlug, slugExists);
 
-      // Create presigned upload URL (upsert for updates)
-      const { data: signedData, error: signError } = existingArtifact
-        ? await admin.storage.from('artifacts').createSignedUploadUrl(storagePath, { upsert: true })
-        : await admin.storage.from('artifacts').createSignedUploadUrl(storagePath);
+      const artifactId = crypto.randomUUID();
+      const storagePath = `${userId}/${artifactId}.html`;
+
+      // Create presigned upload URL
+      const { data: signedData, error: signError } = await admin.storage
+        .from('artifacts')
+        .createSignedUploadUrl(storagePath);
 
       if (signError || !signedData) {
         throw new Error(`Failed to create upload URL: ${signError?.message ?? 'unknown error'}`);
       }
 
-      // Hash password if needed (only for new uploads)
+      // Hash password if needed
       let passwordHash: string | null = null;
       const visibility = (args.visibility as string) || (args.password ? 'password_protected' : 'unlisted');
-      if (!existingArtifact && args.password && visibility === 'password_protected') {
+      if (args.password && visibility === 'password_protected') {
         passwordHash = await hashPassword(args.password as string);
       }
 
@@ -376,22 +362,35 @@ const handleToolCall = async (
           visibility,
           password_hash: passwordHash,
           ttl: (args.ttl as string) ?? '1d',
-          is_update: !!existingArtifact,
+          is_update: false,
         });
 
       if (pendingError) {
         throw new Error(`Failed to create pending upload: ${pendingError.message}`);
       }
 
-      const mode = existingArtifact ? 'update' : 'new';
+      // Build collision hint if similar artifacts exist
+      const collisionHint = (similarArtifacts && similarArtifacts.length > 0)
+        ? {
+            note: `You have existing artifact(s) with similar slugs. If the user intended to update one of these instead of creating a new artifact, cancel this upload and use request_content_update with the appropriate slug.`,
+            similar_artifacts: similarArtifacts.map(a => ({
+              slug: a.slug,
+              title: a.title,
+              created_at: a.created_at,
+              view_count: a.view_count,
+            })),
+          }
+        : undefined;
+
       return {
         upload_id: artifactId,
         upload_url: signedData.signedUrl,
         storage_path: storagePath,
         slug,
-        mode,
+        mode: 'new',
         expires_in: '2 hours',
         instructions: `Upload your HTML file to the upload_url using: curl -X PUT "${signedData.signedUrl}" -H "Content-Type: text/html" --data-binary @yourfile.html — then call complete_upload with upload_id "${artifactId}"`,
+        ...collisionHint,
       };
     }
 
