@@ -395,6 +395,59 @@ const handleToolCall = async (
       };
     }
 
+    case 'request_content_update': {
+      const slug = args.slug as string;
+      if (!slug) throw new Error('slug is required');
+
+      const { data: existing } = await admin
+        .from('artifacts')
+        .select('id, storage_path, slug, title')
+        .eq('user_id', userId)
+        .eq('slug', slug)
+        .single();
+
+      if (!existing) throw new Error(`Artifact "${slug}" not found. Cannot update.`);
+
+      // Create presigned upload URL (upsert to replace existing file)
+      const { data: signedData, error: signError } = await admin.storage
+        .from('artifacts')
+        .createSignedUploadUrl(existing.storage_path, { upsert: true });
+
+      if (signError || !signedData) {
+        throw new Error(`Failed to create upload URL: ${signError?.message ?? 'unknown error'}`);
+      }
+
+      // Store pending upload metadata
+      const { error: pendingError } = await admin
+        .from('pending_uploads')
+        .insert({
+          id: existing.id,
+          user_id: userId,
+          storage_path: existing.storage_path,
+          title: (args.title as string) || existing.title,
+          slug: existing.slug,
+          visibility: 'unlisted', // not changed during content update
+          password_hash: null,
+          ttl: (args.ttl as string) ?? null,
+          is_update: true,
+        });
+
+      if (pendingError) {
+        throw new Error(`Failed to create pending upload: ${pendingError.message}`);
+      }
+
+      return {
+        upload_id: existing.id,
+        upload_url: signedData.signedUrl,
+        storage_path: existing.storage_path,
+        slug: existing.slug,
+        mode: 'update',
+        existing_title: existing.title,
+        expires_in: '2 hours',
+        instructions: `Upload the new HTML file to the upload_url using: curl -X PUT "${signedData.signedUrl}" -H "Content-Type: text/html" --data-binary @yourfile.html — then call complete_upload with upload_id "${existing.id}"`,
+      };
+    }
+
     case 'complete_upload': {
       const uploadId = args.upload_id as string;
       if (!uploadId) throw new Error('upload_id is required');
