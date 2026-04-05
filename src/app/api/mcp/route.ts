@@ -92,6 +92,7 @@ export const POST = async (request: NextRequest) => {
   if (method === 'tools/call') {
     const toolName = params?.name;
     const args = params?.arguments || {};
+    console.log(`[mcp] tools/call: ${toolName}`, Object.keys(args));
 
     try {
       const result = await handleToolCall(auth.userId, auth.user, toolName, args);
