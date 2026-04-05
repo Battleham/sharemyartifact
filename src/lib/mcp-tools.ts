@@ -17,7 +17,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'request_upload',
-    description: 'Upload a NEW HTML artifact to ShareMyArtifact. This always creates a new artifact — it never overwrites existing ones. If a slug collision occurs, the slug is automatically disambiguated. To update the content of an existing artifact, use request_content_update instead. Steps: (1) call request_upload to get a presigned URL, (2) upload the file directly to that URL using curl or code execution, (3) call complete_upload with the upload_id to finalize. The presigned URL is valid for 2 hours and accepts PUT requests with the raw HTML file body. Example curl: curl -X PUT "<upload_url>" -H "Content-Type: text/html" --data-binary @file.html',
+    description: 'Upload a NEW HTML artifact to ShareMyArtifact. This always creates a new artifact — it never overwrites existing ones. If a slug collision occurs, the slug is automatically disambiguated. To update the content of an existing artifact, use request_content_update instead. Steps: (1) call request_upload to get an upload URL on sharemyartifact.com, (2) upload the file directly to that URL using curl, (3) call complete_upload with the upload_id to finalize. The upload URL is valid for 2 hours and accepts PUT requests with the raw HTML file body. Example curl: curl -X PUT "<upload_url>" -H "Content-Type: text/html" --data-binary @file.html',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -32,7 +32,7 @@ export const MCP_TOOLS = [
   },
   {
     name: 'request_content_update',
-    description: 'Replace the HTML content of an EXISTING artifact. ONLY use this when the user has explicitly asked to update or replace a specific existing artifact. If the user says something generic like "upload this" or "send this to ShareMyArtifact", use request_upload instead — that creates a new artifact and never overwrites. Steps: (1) call request_content_update with the slug, (2) upload the new HTML to the presigned URL, (3) call complete_upload with the upload_id to finalize.',
+    description: 'Replace the HTML content of an EXISTING artifact. ONLY use this when the user has explicitly asked to update or replace a specific existing artifact. If the user says something generic like "upload this" or "send this to ShareMyArtifact", use request_upload instead — that creates a new artifact and never overwrites. Steps: (1) call request_content_update with the slug, (2) upload the new HTML to the upload URL on sharemyartifact.com, (3) call complete_upload with the upload_id to finalize.',
     inputSchema: {
       type: 'object' as const,
       properties: {

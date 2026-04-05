@@ -338,14 +338,8 @@ const handleToolCall = async (
       const artifactId = crypto.randomUUID();
       const storagePath = `${userId}/${artifactId}.html`;
 
-      // Create presigned upload URL
-      const { data: signedData, error: signError } = await admin.storage
-        .from('artifacts')
-        .createSignedUploadUrl(storagePath);
-
-      if (signError || !signedData) {
-        throw new Error(`Failed to create upload URL: ${signError?.message ?? 'unknown error'}`);
-      }
+      // Build upload URL on our own server (relays to Supabase storage)
+      const uploadUrl = `${APP_URL}/api/upload/${artifactId}`;
 
       // Hash password if needed
       let passwordHash: string | null = null;
@@ -388,12 +382,12 @@ const handleToolCall = async (
 
       return {
         upload_id: artifactId,
-        upload_url: signedData.signedUrl,
+        upload_url: uploadUrl,
         storage_path: storagePath,
         slug,
         mode: 'new',
         expires_in: '2 hours',
-        instructions: `Upload your HTML file to the upload_url using: curl -X PUT "${signedData.signedUrl}" -H "Content-Type: text/html" --data-binary @yourfile.html — then call complete_upload with upload_id "${artifactId}"`,
+        instructions: `Upload your HTML file using: curl -X PUT "${uploadUrl}" -H "Content-Type: text/html" --data-binary @yourfile.html — then call complete_upload with upload_id "${artifactId}"`,
         ...collisionHint,
       };
     }
@@ -411,14 +405,8 @@ const handleToolCall = async (
 
       if (!existing) throw new Error(`Artifact "${slug}" not found. Cannot update.`);
 
-      // Create presigned upload URL (upsert to replace existing file)
-      const { data: signedData, error: signError } = await admin.storage
-        .from('artifacts')
-        .createSignedUploadUrl(existing.storage_path, { upsert: true });
-
-      if (signError || !signedData) {
-        throw new Error(`Failed to create upload URL: ${signError?.message ?? 'unknown error'}`);
-      }
+      // Build upload URL on our own server (relays to Supabase storage)
+      const uploadUrl = `${APP_URL}/api/upload/${existing.id}`;
 
       // Store pending upload metadata
       const { error: pendingError } = await admin
@@ -441,13 +429,13 @@ const handleToolCall = async (
 
       return {
         upload_id: existing.id,
-        upload_url: signedData.signedUrl,
+        upload_url: uploadUrl,
         storage_path: existing.storage_path,
         slug: existing.slug,
         mode: 'update',
         existing_title: existing.title,
         expires_in: '2 hours',
-        instructions: `Upload the new HTML file to the upload_url using: curl -X PUT "${signedData.signedUrl}" -H "Content-Type: text/html" --data-binary @yourfile.html — then call complete_upload with upload_id "${existing.id}"`,
+        instructions: `Upload the new HTML file using: curl -X PUT "${uploadUrl}" -H "Content-Type: text/html" --data-binary @yourfile.html — then call complete_upload with upload_id "${existing.id}"`,
       };
     }
 
